@@ -9,7 +9,6 @@ var uuid = require('uuid');
 var express = require('express');
 var mysql = require('mysql');
 var bodyParser = require('body-parser');
-var profile = require('./profile');
 var multer = require('multer');
 var path = require('path');
 var newDate = require('date-utils');
@@ -83,6 +82,52 @@ var app=express();
 var upload = multer({ storage: storage });
 
 
+
+app.post('/picturedata',upload.array('files'),(req,res,next) => {
+    
+    let file1 = "empty";
+    let file2 = "empty";
+    let file3 = "empty";
+    for(var i = 0; i<req.files.length; i++){
+        switch(i){
+            case 0:
+                file1 ="http://10.0.2.2:3000/"+req.files[0].filename;
+                break;
+            case 1:
+                file2 = "http://10.0.2.2:3000/"+req.files[1].filename;
+                break;
+            case 2:
+                file3 = "http://10.0.2.2:3000/"+req.files[2].filename;
+                break;
+        }
+    }
+
+    let pictitle = req.body.pictitle;
+    let piccontents = req.body.piccontents;
+
+    var sql = 'INSERT INTO multiphoto(pictitle,photo1,photo2,photo3,piccontents) VALUES(?,?,?,?,?)';
+
+    con.query(sql,[pictitle,file1,file2,file3,piccontents],function (error,result,fields){
+        if(error){
+            console.log("error ocurred", error);
+            res.send({
+                "code": 400,
+                "failed": "error ocurred"
+            })
+         }
+         else{
+             console.log('The solution is:', result);
+             res.send({
+                "code": 200,
+                "success" : "업로드 성공"
+            })
+         }
+     })
+});
+
+
+
+
 app.get("/videodata",(req,res,next)=>{
     con.query('SELECT * FROM testvideo',function(error,result,fields){
         con.on('error',function(err){
@@ -97,6 +142,23 @@ app.get("/videodata",(req,res,next)=>{
         }
     })
 });
+
+app.get("/photodata",(req,res,next)=>{
+    con.query('SELECT * FROM multiphoto',function(error,result,fields){
+        con.on('error',function(err){
+            console.log('[MY SQL ERROR]',err);
+        });
+        if(result && result.length){
+            res.end(JSON.stringify(result));
+            console.log(result);
+        } else {
+            res.end(JSON.stringify("no photo"));
+            console.log("사진이 없습니다.");
+        }
+    })
+});
+
+
 
 
 app.post('/profile',upload.array('file',2),function(req, res){
@@ -123,13 +185,9 @@ app.post('/profile',upload.array('file',2),function(req, res){
          })
     });
 
-    app.post('/picturedata',upload.array('file'),function(req,res){
-        var pic_file = req.pic_file;
-        var pic_title = req.body.pic_title;
-        var pic_contents = req.body.pic_contents;
+  
 
-        var sql = 'INSERT INTO testvideo(title,urivideo,contents,uriimage) VALUES(?,?,?,?)';
-    })
+   
 
 
 app.use(bodyParser.json()); /*JSON 매개 변수 허용*/ 
@@ -196,11 +254,121 @@ app.post('/register/', (req, res, next) => {
 
 })
 
+app.post('/change_password/', (req, res, next) => {
+    var post_data = req.body;
+
+    //Extract email and password from request
+    var user_id = post_data.email;
+    // var uid = uuid.v4(); // Get UUID v4 like '110abacsasas-af0x-90333-casasjkajksk
+    var plaint_password = post_data.password; // Get password from post params
+    var hash_data = saltHashPassword(plaint_password);
+    var password = hash_data.passwordHash; // Get hash value
+    var salt = hash_data.salt; // Get salt
+    
+
+    con.query('SELECT * FROM user where email=?', [user_id], function (err, result, fields) {
+
+        con.on('error', function (err) {
+            console.log('[MySQL ERROR]', err);
+        });
+
+        if (result && result.length) {
+            var user = {
+                "unique_id": result[0].unique_id,
+                "name": result[0].name,
+                "email": result[0].email,
+                "encrypted_password": password,
+                "salt": salt,
+                "created_at": result[0].created_at,
+                "updated_at": result[0].updated_at,
+                "email": result[0].email
+            }
+            var sql = 'UPDATE user SET unique_id=?,name=?,email=?,encrypted_password=?,salt=?,created_at=?,updated_at=? WHERE email=?';
+            con.query(sql,[result[0].unique_id,result[0].name,result[0].email,password,salt,result[0].created_at,result[0].updated_at,result[0].email] , function (err, result, fields) {
+            if (err) {
+                console.log(err);
+                res.status(500).send('Internal Server Error,비밀번호 변경에 실패하였습니다.');
+            } else {
+                res.end(JSON.stringify('비밀번호 변경이 완료되었습니다.'));
+        }
+    });    
+        }  
+    });
+})
+
+app.post('/modify_myInfo/', (req, res, next) => {
+    var post_data = req.body;
+    var id = post_data.id;
+    var unique_id = post_data.unique_id;
+    var name = post_data.name;
+    var email = post_data.email;
+    var encrypted_password = post_data.encrypted_password;
+    var salt = post_data.salt;
+    var created_at = post_data.created_at;
+    var updated_at = post_data.updated_at;
+
+    var sql = 'UPDATE user SET unique_id=?,name=?,email=?,encrypted_password=?,salt=?,created_at=?,updated_at=? WHERE id=?';
+    con.query(sql,[unique_id,name,email,encrypted_password,salt,created_at,updated_at,id] , function (err, result, fields) {
+        if (err) {
+            console.log(err);
+            res.status(500).send('Internal Server Error,이름 변경에 실패하였습니다.');
+        } else {
+            res.end(JSON.stringify('이름 변경이 완료되었습니다.'));
+        }
+    });    
+});
+
+app.post('/delete_user/',(req,res,next) => {
+
+    var id = req.body.id;
+    var email = req.body.email;
+   
+     
+     var sql = 'DELETE FROM user where id=? AND email=?';
+     con.query(sql,[id,email], function (error, result, fields) {
+         if (error) {
+             console.log("error ocurred", error);
+             res.send({
+                 "code": 400,
+                 "failed": "error ocurred"
+             })
+         } else {
+             console.log('The solution is: ', result);
+             res.send({
+                 "code": 200,
+                 "success": "회원을 탈퇴하였습니다.",
+             })
+             
+         }
+     })
+ });
 
 
 
 
 
+app.post('/deletephoto/', (req, res, next) => {
+    var post_data = req.body; // Get POST params
+    var id = post_data.id;
+
+         var sql = 'DELETE FROM multiphoto where id = ?';
+     con.query(sql,[id], function (error, result, fields) {
+         if (error) {
+             console.log("error ocurred", error);
+             res.send({
+                 "code": 400,
+                 "failed": "error ocurred"
+             })
+         } else {
+             console.log('The solution is: ', result);
+             res.send({
+                 "code": 200,
+                 "success": "삭제하였습니다.",
+             })
+             
+         }
+     })
+})
 
 
 app.post('/deletevideo/', (req, res, next) => {
@@ -226,13 +394,15 @@ app.post('/deletevideo/', (req, res, next) => {
      })
 })
 
+
+
 app.post('/editvideo/',upload.array('file',2),function(req, res){
     var post_data = req.body;
     var id = post_data.id;
     var edittitle = post_data.title;
     var editimage = req.files[1].filename;
     var editvideo = req.files[0].filename;
-    var editcontents = post_data.editcontents;
+    var editcontents = post_data.contents;
 
     var sql = 'UPDATE testvideo SET title = ? ,uriimage = ?, contents = ?, urivideo = ? WHERE id = ?';
 
@@ -252,6 +422,49 @@ app.post('/editvideo/',upload.array('file',2),function(req, res){
         }
     })
 })
+
+app.post('/editpicturedata/',upload.array('files'),(req,res,next) => {
+    var post_data = req.body;
+    let file1 = "empty";
+    let file2 = "empty";
+    let file3 = "empty";
+    for(var i = 0; i<req.files.length; i++){
+        switch(i){
+            case 0:
+                file1 ="http://10.0.2.2:3000/"+req.files[0].filename;
+                break;
+            case 1:
+                file2 = "http://10.0.2.2:3000/"+req.files[1].filename;
+                break;
+            case 2:
+                file3 = "http://10.0.2.2:3000/"+req.files[2].filename;
+                break;
+        }   
+    }
+    let id = post_data.id;
+    let editpictitle = post_data.pictitle;
+    let editpiccontents = post_data.piccontents;
+
+    var sql = 'UPDATE multiphoto SET pictitle = ? , photo1 = ?, photo2 = ?, photo3 = ?, piccontents = ?  WHERE id = ?';
+
+
+    con.query(sql,[editpictitle,"http://10.0.2.2:3000/"+req.files[0].filename,"http://10.0.2.2:3000/"+req.files[1].filename,"http://10.0.2.2:3000/"+req.files[2].filename,editpiccontents,id],function (error,result,fields){
+        if(error){
+            console.log("error ocurred", error);
+            res.send({
+                "code": 400,
+                "failed": "error ocurred"
+            })
+         }
+         else{
+             console.log('The solution is:', result);
+             res.send({
+                "code": 200,
+                "success" : "업로드 성공"
+            })
+         }
+     })
+});
 
 app.post('/user/', (req,res,next) => {  
     var post_data = req.body; // Get POST BODY
@@ -302,6 +515,35 @@ app.post('/Comment/',(req,res,next) =>{
     })
 });
 
+app.post('/gallerycomment/',(req,res,next) =>{
+    var post_data=req.body;
+    var Comment = post_data.Comment
+ 
+    let newDate = new Date();
+    var week = new Array('일','월','화','수','목','금','토');
+    let comment_time = newDate.toFormat('YYYY-MM-DD ')+ week[newDate.getDay()] + '요일 '+ newDate.toFormat('HH:MI:SS');
+
+    var sql = 'INSERT INTO gallerycomment(id,Comment,email,name,date) VALUES(?,?,?,?,?)';
+ 
+    con.query(sql,[post_data.id,Comment,post_data.email,post_data.name,comment_time],function (error,result,fields){
+        if(error){
+           console.log("error ocurred", error);
+           res.send({
+               "code": 400,
+               "failed": "error ocurred"
+           })
+        }
+        else{
+            console.log('The solution is:', result);
+            res.send({
+               "code": 200,
+           })
+        }
+    })
+});
+
+
+
 app.get("/commentdata/:id",(req,res,next)=>{
     con.query('SELECT * FROM comment where id=?',[req.params.id],function(error,result,fields){
         con.on('error',function(err){
@@ -312,9 +554,27 @@ app.get("/commentdata/:id",(req,res,next)=>{
             res.end(JSON.stringify(result));
             // console.log(result);
         } else {
+            res.end(JSON.stringify(result));
         }
     })
 });
+
+app.get("/gallerycommentdata/:id",(req,res,next)=>{
+    con.query('SELECT * FROM gallerycomment where id=?',[req.params.id],function(error,result,fields){
+        con.on('error',function(err){
+            console.log('[MY SQL ERROR]',err);
+        });
+
+        if(result && result.length){
+            res.end(JSON.stringify(result));
+            // console.log(result);
+        } else {
+            res.end(JSON.stringify(result));
+        }
+    })
+});
+
+
 
 app.post('/editcomment/',(req, res,next)=>{
     var post_data = req.body;
@@ -351,6 +611,31 @@ app.post('/deletecomment/',(req,res,next) => {
    
      
      var sql = 'DELETE FROM comment where idxx=?';
+     con.query(sql,[idxx], function (error, result, fields) {
+         if (error) {
+             console.log("error ocurred", error);
+             res.send({
+                 "code": 400,
+                 "failed": "error ocurred"
+             })
+         } else {
+             console.log('The solution is: ', result);
+             res.send({
+                 "code": 200,
+                 "success": "댓글을 삭제하였습니다.",
+             
+             })
+             
+         }
+     })
+ });
+
+ app.post('/gallerydeletecomment/',(req,res,next) => {
+
+    var idxx = req.body.idxx;
+   
+     
+     var sql = 'DELETE FROM gallerycomment where idxx=?';
      con.query(sql,[idxx], function (error, result, fields) {
          if (error) {
              console.log("error ocurred", error);
